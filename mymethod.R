@@ -4,6 +4,14 @@ for (i in 1:length(args)) {
   eval(parse(text = args[[i]]))
 }
 # ------------------------------------------------------------------ 
+
+library(R.matlab)
+library(reshape2)
+library(abind)
+library(glmnet)
+library(grplasso)
+library(caret)
+
 set.seed(myseed)
 
 # mac
