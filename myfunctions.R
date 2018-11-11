@@ -133,18 +133,20 @@ getX.group = function(data.concat.train.list, data.concat.test.list, l_test, lam
 }
 
 getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix){
-  Y.train = do.call(c, lapply(data.concat.train.list[1:L], function(x) x[,col_ix]))
-  x.list = lapply(data.concat.train.list[1:L], function(x) x[,-col_ix])
+  L = length(data.concat.train.list)
+  Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
+  X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
   X.train.group = matrix(0, nrow = length(Y.train), ncol = 115*L)
+  vec = c(0, cumsum(sapply(X.list, nrow)))
   for (l in 1:L){
-    X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = x.list[[l]]
+    X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
   }
   group_ix = rep(seq(1,115), L)
   lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
   lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
   group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
   group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
-  #   acc.list = list()
+  
   X.list = list()
   for (l_test in 1:L){
     res.list = lapply(1:L, function(l) data.concat.train.list[[l]][,col_ix] - data.concat.train.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
@@ -160,6 +162,7 @@ getX.group.parallel = function(data.concat.train.list, data.concat.test.list, la
       coef.mtx.list[[l]] = coef.mtx
     }
     X.train = as.matrix(t(do.call(cbind, coef.mtx.list)))
+    
     res.test.list = lapply(1:L, function(l) data.concat.test.list[[l]][,col_ix] - data.concat.test.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
     # given residuals refit every subject
     coef.mtx.test.list = list()
@@ -173,11 +176,12 @@ getX.group.parallel = function(data.concat.train.list, data.concat.test.list, la
       coef.mtx.test.list[[l]] = coef.mtx
     }
     X.test = as.matrix(t(do.call(cbind, coef.mtx.test.list)))
-    X.list[[l_test]] = list(X.train, X.test)
+    X.list[[l_test]] = list(X.train = X.train, X.test = X.test)
   }
   return(X.list)
 }
 
+# same lambda
 cv.logistic = function(X1, X2, label, nfolds, lambda.vec, alpha){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_lam = length(lambda.vec)
@@ -221,6 +225,7 @@ cv.logistic = function(X1, X2, label, nfolds, lambda.vec, alpha){
   return(list(which.max(acc.vec), acc.mtx, acc.mtx.list))
 }
 
+# different lambda
 cv.logistic0 = function(X1, X2, label, nfolds, lambda.vec, alpha){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_lam = length(lambda.vec)
