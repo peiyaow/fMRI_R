@@ -47,7 +47,7 @@ label.test = as.factor(unlist(sapply(1:L, function(l) rep(l, n.test.vec[l]))))
 lambda_ix = 10
 cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
-X.train.test.group.list = foreach(col_ix = 1:116, .packages = c("grplasso", "reticulate", "glmnet")) %dopar% {
+X.train.test.group.list = foreach(col_ix = 1:116, .packages = c("grplasso", "reticulate", "glmnet", "SGL")) %dopar% {
   getX.group.parallel(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix)
 }
 stopCluster(cl)

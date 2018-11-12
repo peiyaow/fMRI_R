@@ -132,7 +132,7 @@ getX.group = function(data.concat.train.list, data.concat.test.list, l_test, lam
   return(list(X.train, X.test))
 }
 
-getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix){
+getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix, library = "SGL"){
   L = length(data.concat.train.list)
   Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
   X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
@@ -142,10 +142,20 @@ getX.group.parallel = function(data.concat.train.list, data.concat.test.list, la
     X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
   }
   group_ix = rep(seq(1,115), L)
-  lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
-  lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
-  group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
-  group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
+  
+  if (library == "SGL"){
+    # use SGL
+    SGLdata = list(x = X.train.group, y = Y.train)
+    SGL.list = SGL(data = SGLdata, index = group_ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
+    #beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = L), col_ix))
+    group_coef = array(SGL.list$beta, dim = c(115, L, 10))
+  }else if (library == "grplasso"){
+    # use grplasso
+    lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
+    lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
+    group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
+    group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
+  }
   
   X.list = list()
   for (l_test in 1:L){
