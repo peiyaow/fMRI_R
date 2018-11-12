@@ -51,6 +51,7 @@ X.train.test.group.list = foreach(col_ix = 1:116, .packages = c("grplasso", "ret
   getX.group.parallel(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix)
 }
 stopCluster(cl)
+X.train.test.group.list0 = X.train.test.group.list
 
 X1.train.test.group.list = lapply(1:116, function(col_ix) X.train.test.group.list[[col_ix]][[1]])
 X1.train.test.group.list = sapply(X1.train.test.group.list, function(list) as.array(list))
@@ -61,6 +62,9 @@ X2.train.test.group.list = lapply(1:116, function(col_ix) X.train.test.group.lis
 X2.train.test.group.list = sapply(X2.train.test.group.list, function(list) as.array(list))
 X2.train = do.call(cbind, X2.train.test.group.list[1,])
 X2.test = do.call(cbind, X2.train.test.group.list[2,])
+
+try = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2)
+try$lambda
 
 lambda.vec = exp(seq(log(0.05), log(0.0005), length.out = 100))
 ml1 = cv.logistic(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
@@ -93,7 +97,7 @@ acc.ml0 = sum(pred == label.test)/length(label.test)
 
 logistic.list1 = cv.glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 logistic.list2 = cv.glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
-prob1 = predict(logistic.list1, s = logistic.list1$lambda.min, newx = X1.test, type = "response")
+prob1 = predict(logistic.list1, s = logistic.list1$lambda.min, newx = X1.train, type = "response")
 prob2 = predict(logistic.list2, s = logistic.list2$lambda.min, newx = X2.test, type = "response")
 prob = (prob1 + prob2)/2
 pred1 = prob2pred(prob1)

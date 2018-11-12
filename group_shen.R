@@ -71,19 +71,17 @@ Y.label.test = Y.label[-ix.train]
 n.train = length(Y.label.train)
 n.test = length(Y.label.test)
 
-# cost.vec = exp(seq(log(.01), log(.1), length.out = 10))
-cost.vec = seq(.1,.01, length.out = 10)
+cost.vec = exp(seq(log(.1), log(.01), length.out = 100))
+#cost.vec = seq(.1,.01, length.out = 10)
 svm.list = lapply(cost.vec, function(cost) svm(x = X.feature.train, y = Y.label.train, scale = T, kernel = "linear", cost = cost))
-p.table = sapply(1:10, function(ix) sum(predict(svm.list[[ix]], X.feature.test) == Y.label.test)/n.test)
-nSV.table = sapply(1:10, function(ix) svm.list[[ix]]$nSV)
+p.table = sapply(1:100, function(ix) sum(predict(svm.list[[ix]], X.feature.test) == Y.label.test)/n.test)
+nSV.table = sapply(1:100, function(ix) svm.list[[ix]]$nSV)
 print(nSV.table)
+svm.cv.ml = cv.svm(X.feature.train, Y.label.train, 10, cost.vec)
+acc = sum(predict(svm.cv.ml[[4]], X.feature.test) == Y.label.test)/n.test
+
 file.name = 'accuracy.csv'
-write.table(t(p.table), file = file.name, sep = ',', append = T, col.names = F, row.names = F)
-
-
-
-
-
+write.table(t(c(p.table, acc)), file = file.name, sep = ',', append = T, col.names = F, row.names = F)
 
 
 

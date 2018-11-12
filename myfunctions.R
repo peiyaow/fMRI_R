@@ -261,6 +261,27 @@ cv.logistic0 = function(X1, X2, label, nfolds, lambda.vec, alpha){
   return(list(max.id[[1]], max.id[[2]], sd.vec, id.mtx.max, acc.mtx, acc.mtx.list))
 }
 
+cv.svm = function(X, label, nfolds, cost.vec){
+  flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
+  len_cost = length(cost.vec)
+  acc.mtx.list = list()
+  for (k in 1:nfolds){
+    X.train = X[unlist(flds[-k]), ]
+    X.val = X[unlist(flds[k]), ]
+    label.train = label[unlist(flds[-k])]
+    label.val = label[unlist(flds[k])]
+    
+    svm.list = lapply(cost.vec, function(cost) svm(x = X.train, y = label.train, scale = T, kernel = "linear", cost = cost))
+    acc.vec = sapply(1:len_cost, function(ix) sum(predict(svm.list[[ix]], X.val) == label.val)/length(label.val))
+    acc.mtx.list[[k]] = acc.vec
+  }
+  acc.mtx = do.call(rbind, acc.mtx.list)
+  acc.vec = apply(acc.mtx, 2, mean)
+  ix.max = which.max(acc.vec)
+  svm.ml = svm(x = X, y = label, scale = T, kernel = "linear", cost = cost.vec[ix.max])
+  return(list(ix.max, acc.mtx, acc.mtx.list, svm.ml))
+}
+
 getGraph.parallel = function(data.concat, col_ix, lambda_ix = 10, library = 'grplasso'){
   n = dim(data.concat)[1]/137
   Y = data.concat[, col_ix]
