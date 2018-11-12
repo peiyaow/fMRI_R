@@ -182,7 +182,7 @@ getX.group.parallel = function(data.concat.train.list, data.concat.test.list, la
 }
 
 # same lambda
-cv.logistic = function(X1, X2, label, nfolds, lambda.vec, alpha){
+cv.logistic1 = function(X1, X2, label, nfolds, lambda.vec, alpha){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_lam = length(lambda.vec)
   acc.mtx.list = list()
@@ -224,6 +224,54 @@ cv.logistic = function(X1, X2, label, nfolds, lambda.vec, alpha){
   acc.vec = apply(acc.mtx, 2, mean)
   return(list(which.max(acc.vec), acc.mtx, acc.mtx.list))
 }
+
+# same lambda different w
+cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha){
+  flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
+  len_lam = length(lambda.vec)
+  acc.mtx.list = list()
+  w = seq(0, 1, length.out = 11)
+  for (k in 1:nfolds){
+    X1.train = X1[unlist(flds[-k]), ]
+    X1.val = X1[unlist(flds[k]), ]
+    X2.train = X2[unlist(flds[-k]), ]
+    X2.val = X2[unlist(flds[k]), ]
+    label.train = label[unlist(flds[-k])]
+    label.val = label[unlist(flds[k])]
+    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
+    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
+    prob1 = predict(logistic.list1, newx = X1.val, type = "response") # n.val by n.lambda
+    prob2 = predict(logistic.list2, newx = X2.val, type = "response")
+    
+    prob.mtx.list = lapply(w, function(w_) prob1*w_ + prob2*(1-w_))
+    pred.mtx.list = lapply(prob.mtx.list, function(prob.mtx) apply(prob.mtx, 2, prob2pred))
+    acc.mtx = sapply(pred.mtx.list, function(pred.mtx) apply(pred.mtx, 2, function(pred.vec) sum(pred.vec==label.val)/length(label.val)))
+    acc.mtx.list[[k]] = acc.mtx
+    # prob.list = lapply(1:len_lam, function(i) sapply(1:len_lam, function(j) (prob1[,i]+prob2[,j])/2))
+    # pred.list = lapply(prob.list, function(prob.mtx) apply(prob.mtx, 2, prob2pred))
+    # acc.list = lapply(pred.list, function(pred.mtx) apply(pred.mtx, 2, function(pred.vec) sum(pred.vec== label.val)/length(label.val)))
+    # acc.mtx.list[[k]] = do.call(rbind, acc.list)
+  }
+  acc.array = array(unlist(acc.mtx.list), dim = c(len_lam, 11, nfolds))
+  acc.mtx = apply(acc.array, c(1,2), function(x) mean(x))
+  # sd.mtx = apply(acc.array, c(1,2), function(x) sd(x))
+  # TF.mtx = acc.mtx == max(acc.mtx) 
+  # sd.vec = sd.mtx[TF.mtx]
+  # min.sd = min(sd.vec)
+  # TF.mtx = TF.mtx*(sd.mtx==min.sd)  
+  # id.mtx.max = expand.grid(seq(1,len_lam), seq(1,len_lam))[as.logical(as.vector(TF.mtx)),]
+  # max.id = id.mtx.max[which.max(apply(id.mtx.max, 1, sum)), ]
+  
+  max.id = which.max(acc.mtx)
+  max.id1 = (max.id - 1)%%len_lam + 1
+  max.id2 = ceiling(max.id/len_lam)
+  return(list(max.id1, max.id2, acc.mtx, acc.mtx.list))
+  
+  # acc.mtx = do.call(rbind, acc.mtx.list)
+  # acc.vec = apply(acc.mtx, 2, mean)
+  # return(list(which.max(acc.vec), acc.mtx, acc.mtx.list))
+}
+
 
 # different lambda
 cv.logistic0 = function(X1, X2, label, nfolds, lambda.vec, alpha){

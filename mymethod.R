@@ -52,7 +52,7 @@ X.train.test.group.list = foreach(col_ix = 1:116, .packages = c("grplasso", "ret
 }
 stopCluster(cl)
 X.train.test.group.list0 = X.train.test.group.list
-
+X.train.test.group.list = X.train.test.group.list0
 X1.train.test.group.list = lapply(1:116, function(col_ix) X.train.test.group.list[[col_ix]][[1]])
 X1.train.test.group.list = sapply(X1.train.test.group.list, function(list) as.array(list))
 X1.train = do.call(cbind, X1.train.test.group.list[1,])
@@ -67,7 +67,8 @@ X2.test = do.call(cbind, X2.train.test.group.list[2,])
 # try$lambda
 
 lambda.vec = exp(seq(log(0.05), log(0.0005), length.out = 100))
-ml1 = cv.logistic(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
+set.seed(10)
+ml1 = cv.logistic1(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
 logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 prob1 = predict(logistic.list1, s = lambda.vec[ml1[[1]]], newx = X1.test, type = "response")
@@ -81,6 +82,24 @@ prob.mtx = cbind(prob1, prob2, prob, label.test)
 row.names(prob.mtx) = seq(1, length(label.test))
 acc.ml1 = sum(pred == label.test)/length(label.test)
 
+set.seed(10)
+ml2 = cv.logistic2(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
+logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
+logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
+prob1 = predict(logistic.list1, s = lambda.vec[ml2[[1]]], newx = X1.test, type = "response")
+prob2 = predict(logistic.list2, s = lambda.vec[ml2[[1]]], newx = X2.test, type = "response")
+w = seq(0,1,length.out = 11)
+prob = prob1*w[ml2[[2]]] + prob2*(1-w[ml2[[2]]])
+#prob = prob1*w[10] + prob2*(1-w[10])
+pred1 = prob2pred(prob1)
+pred2 = prob2pred(prob2)
+pred = prob2pred(prob)
+pred.mtx = cbind(pred1, pred2, pred, label.test)
+prob.mtx = cbind(prob1, prob2, prob, label.test)
+row.names(prob.mtx) = seq(1, length(label.test))
+acc.ml2 = sum(pred == label.test)/length(label.test)
+
+set.seed(10)
 ml0 = cv.logistic0(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
 logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
@@ -109,7 +128,7 @@ row.names(prob.mtx) = seq(1, length(label.test))
 acc.ml = sum(pred == label.test)/length(label.test)
 
 file.name = 'accuracy.csv'
-write.table(t(c(acc.ml1, acc.ml0, acc.ml)), file = file.name, sep = ',', append = T, col.names = F, row.names = F)
+write.table(t(c(acc.ml0, acc.ml1, acc.ml2, acc.ml)), file = file.name, sep = ',', append = T, col.names = F, row.names = F)
 
 
 
