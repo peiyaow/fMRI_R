@@ -77,7 +77,7 @@ prob.mtx = cbind(prob1, prob2, prob, label.test)
 row.names(prob.mtx) = seq(1, length(label.test))
 acc.ml1 = sum(pred == label.test)/length(label.test)
 
-ml0 = cv.logistic0(X1.train, X2.train, label.train, 10, lambda.vec0, 0.2)
+ml0 = cv.logistic0(X1.train, X2.train, label.train, 10, lambda.vec, 0.2)
 logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = 0.2, lambda = lambda.vec)
 prob1 = predict(logistic.list1, s = lambda.vec[ml0[[1]]], newx = X1.test, type = "response")
