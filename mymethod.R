@@ -11,6 +11,7 @@ library(abind)
 library(glmnet)
 library(grplasso)
 library(caret)
+library(doParallel)
 
 set.seed(myseed)
 
