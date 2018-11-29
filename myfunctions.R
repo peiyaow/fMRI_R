@@ -1,6 +1,7 @@
 library(reticulate)
 library(SGL)
 library(grplasso)
+library(glasso)
 
 scale_data = function(data.list){
   data.list = lapply(data.list, function(x) sapply(1:dim(x)[1], function(i) scale(x[i,,])))
@@ -20,12 +21,13 @@ add.diagonal = function(Beta, col_ix, have.intercept = F){
     Beta = Beta[-1,]
   }
   p = nrow(Beta)+1
+#  print(p)
   n = ncol(Beta)
   newBeta = matrix(0, ncol = n, nrow = p)
   if (col_ix == 1){
     newBeta[col_ix,] = 1
     newBeta[(col_ix+1):p,] = Beta[col_ix:(p-1),]
-  }else if (col_ix == 116){
+  }else if (col_ix == p){
     newBeta[col_ix,] = 1
     newBeta[1:(p-1),] = Beta
   }else{
@@ -34,6 +36,12 @@ add.diagonal = function(Beta, col_ix, have.intercept = F){
     newBeta[(col_ix+1):p,] = Beta[col_ix:(p-1),]
   }
   return(newBeta)
+}
+
+mtx2graph = function(mtx){
+  p = ncol(mtx)
+  graph = sapply(1:p, function(col_ix) add.diagonal(as.matrix(mtx[, col_ix]), col_ix))
+  return(graph)
 }
 
 graph.features <- function(A){
@@ -132,67 +140,66 @@ getX.group = function(data.concat.train.list, data.concat.test.list, l_test, lam
   return(list(X.train, X.test))
 }
 
-getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix, library = "SGL"){
-  L = length(data.concat.train.list)
-  Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
-  X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
-  X.train.group = matrix(0, nrow = length(Y.train), ncol = 115*L)
-  vec = c(0, cumsum(sapply(X.list, nrow)))
-  for (l in 1:L){
-    X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
-  }
-  group_ix = rep(seq(1,115), L)
-  
-  if (library == "SGL"){
-    # use SGL
-    SGLdata = list(x = X.train.group, y = Y.train)
-    SGL.list = SGL(data = SGLdata, index = group_ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
-    #beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = L), col_ix))
-    group_coef = array(SGL.list$beta, dim = c(115, L, 10))
-  }else if (library == "grplasso"){
-    # use grplasso
-    lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
-    lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
-    group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
-    group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
-  }
-  
-  X.list = list()
-  for (l_test in 1:L){
-    res.list = lapply(1:L, function(l) data.concat.train.list[[l]][,col_ix] - data.concat.train.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
-    # given residuals refit every subject
-    coef.mtx.list = list()
-    for (l in 1:L){
-      coef.list = list()
-      for (subject_ix in 1:n.train.vec[l]){
-        res_fit = glmnet(x = data.concat.train.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
-        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])
-      }
-      coef.mtx = do.call(cbind, coef.list)
-      coef.mtx.list[[l]] = coef.mtx
-    }
-    X.train = as.matrix(t(do.call(cbind, coef.mtx.list)))
-    
-    res.test.list = lapply(1:L, function(l) data.concat.test.list[[l]][,col_ix] - data.concat.test.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
-    # given residuals refit every subject
-    coef.mtx.test.list = list()
-    for (l in 1:L){
-      coef.list = list()
-      for (subject_ix in 1:n.test.vec[l]){
-        res_fit = glmnet(x = data.concat.test.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.test.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
-        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])
-      }
-      coef.mtx = do.call(cbind, coef.list)
-      coef.mtx.test.list[[l]] = coef.mtx
-    }
-    X.test = as.matrix(t(do.call(cbind, coef.mtx.test.list)))
-    X.list[[l_test]] = list(X.train = X.train, X.test = X.test)
-  }
-  return(X.list)
-}
-
-# same lambda
-cv.logistic1 = function(X1, X2, label, nfolds, lambda.vec, alpha){
+# getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix, library = "SGL"){
+#   L = length(data.concat.train.list)
+#   Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
+#   X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
+#   X.train.group = matrix(0, nrow = length(Y.train), ncol = 115*L)
+#   vec = c(0, cumsum(sapply(X.list, nrow)))
+#   for (l in 1:L){
+#     X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
+#   }
+#   group_ix = rep(seq(1,115), L)
+#   
+#   if (library == "SGL"){
+#     # use SGL
+#     SGLdata = list(x = X.train.group, y = Y.train)
+#     SGL.list = SGL(data = SGLdata, index = group_ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
+#     #beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = L), col_ix))
+#     group_coef = array(SGL.list$beta, dim = c(115, L, 10))
+#   }else if (library == "grplasso"){
+#     # use grplasso
+#     lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
+#     lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
+#     group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
+#     group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
+#   }
+#   
+#   X.list = list()
+#   for (l_test in 1:L){
+#     res.list = lapply(1:L, function(l) data.concat.train.list[[l]][,col_ix] - data.concat.train.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
+#     # given residuals refit every subject
+#     coef.mtx.list = list()
+#     for (l in 1:L){
+#       coef.list = list()
+#       for (subject_ix in 1:n.train.vec[l]){
+#         res_fit = glmnet(x = data.concat.train.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+#         coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])
+#       }
+#       coef.mtx = do.call(cbind, coef.list)
+#       coef.mtx.list[[l]] = coef.mtx
+#     }
+#     X.train = as.matrix(t(do.call(cbind, coef.mtx.list)))
+#     
+#     res.test.list = lapply(1:L, function(l) data.concat.test.list[[l]][,col_ix] - data.concat.test.list[[l]][,-col_ix]%*%group_coef[,,lambda_ix][,l_test])
+#     # given residuals refit every subject
+#     coef.mtx.test.list = list()
+#     for (l in 1:L){
+#       coef.list = list()
+#       for (subject_ix in 1:n.test.vec[l]){
+#         res_fit = glmnet(x = data.concat.test.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.test.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+#         coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])
+#       }
+#       coef.mtx = do.call(cbind, coef.list)
+#       coef.mtx.test.list[[l]] = coef.mtx
+#     }
+#     X.test = as.matrix(t(do.call(cbind, coef.mtx.test.list)))
+#     X.list[[l_test]] = list(X.train = X.train, X.test = X.test)
+#   }
+#   return(X.list)
+# }
+# different lambda
+cv.logistic0 = function(X1, X2, label, nfolds, lambda.vec, alpha, standardize = T){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_lam = length(lambda.vec)
   acc.mtx.list = list()
@@ -203,8 +210,44 @@ cv.logistic1 = function(X1, X2, label, nfolds, lambda.vec, alpha){
     X2.val = X2[unlist(flds[k]), ]
     label.train = label[unlist(flds[-k])]
     label.val = label[unlist(flds[k])]
-    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
-    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
+    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
+    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
+    prob1 = predict(logistic.list1, newx = X1.val, type = "response") # n.val by n.lambda
+    prob2 = predict(logistic.list2, newx = X2.val, type = "response")
+    prob.list = lapply(1:len_lam, function(i) sapply(1:len_lam, function(j) (prob1[,i]+prob2[,j])/2))
+    pred.list = lapply(prob.list, function(prob.mtx) apply(prob.mtx, 2, prob2pred))
+    acc.list = lapply(pred.list, function(pred.mtx) apply(pred.mtx, 2, function(pred.vec) sum(pred.vec== label.val)/length(label.val)))
+    acc.mtx.list[[k]] = do.call(rbind, acc.list)
+  }
+  acc.array = array(unlist(acc.mtx.list), dim = c(len_lam, len_lam, nfolds))
+  acc.mtx = apply(acc.array, c(1,2), function(x) mean(x))
+  sd.mtx = apply(acc.array, c(1,2), function(x) sd(x))
+  TF.mtx = acc.mtx == max(acc.mtx)
+  sd.vec = sd.mtx[TF.mtx]
+  min.sd = min(sd.vec)
+  TF.mtx = TF.mtx*(sd.mtx==min.sd)
+  id.mtx.max = expand.grid(seq(1,len_lam), seq(1,len_lam))[as.logical(as.vector(TF.mtx)),]
+  max.id = id.mtx.max[which.max(apply(id.mtx.max, 1, sum)), ]
+  #max.id = which.max(acc.mtx)
+  #max.id1 = (max.id - 1)%%len_lam + 1
+  #max.id2 = ceiling(max.id/len_lam)
+  return(list(max.id[[1]], max.id[[2]], sd.vec, id.mtx.max, acc.mtx, acc.mtx.list))
+}
+
+# same lambda
+cv.logistic1 = function(X1, X2, label, nfolds, lambda.vec, alpha, standardize = T){
+  flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
+  len_lam = length(lambda.vec)
+  acc.mtx.list = list()
+  for (k in 1:nfolds){
+    X1.train = X1[unlist(flds[-k]), ]
+    X1.val = X1[unlist(flds[k]), ]
+    X2.train = X2[unlist(flds[-k]), ]
+    X2.val = X2[unlist(flds[k]), ]
+    label.train = label[unlist(flds[-k])]
+    label.val = label[unlist(flds[k])]
+    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
+    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
     prob1 = predict(logistic.list1, newx = X1.val, type = "response") # n.val by n.lambda
     prob2 = predict(logistic.list2, newx = X2.val, type = "response")
     
@@ -236,7 +279,7 @@ cv.logistic1 = function(X1, X2, label, nfolds, lambda.vec, alpha){
 }
 
 # same lambda different w
-cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha){
+cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha, standardize = T){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_lam = length(lambda.vec)
   acc.mtx.list = list()
@@ -248,8 +291,8 @@ cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha){
     X2.val = X2[unlist(flds[k]), ]
     label.train = label[unlist(flds[-k])]
     label.val = label[unlist(flds[k])]
-    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
-    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
+    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
+    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = standardize, alpha = alpha, lambda = lambda.vec)
     prob1 = predict(logistic.list1, newx = X1.val, type = "response") # n.val by n.lambda
     prob2 = predict(logistic.list2, newx = X2.val, type = "response")
     
@@ -283,41 +326,7 @@ cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha){
 }
 
 
-# different lambda
-cv.logistic0 = function(X1, X2, label, nfolds, lambda.vec, alpha){
-  flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
-  len_lam = length(lambda.vec)
-  acc.mtx.list = list()
-  for (k in 1:nfolds){
-    X1.train = X1[unlist(flds[-k]), ]
-    X1.val = X1[unlist(flds[k]), ]
-    X2.train = X2[unlist(flds[-k]), ]
-    X2.val = X2[unlist(flds[k]), ]
-    label.train = label[unlist(flds[-k])]
-    label.val = label[unlist(flds[k])]
-    logistic.list1 = glmnet(x = X1.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
-    logistic.list2 = glmnet(x = X2.train, y = label.train, family = "binomial", standardize = F, alpha = alpha, lambda = lambda.vec)
-    prob1 = predict(logistic.list1, newx = X1.val, type = "response") # n.val by n.lambda
-    prob2 = predict(logistic.list2, newx = X2.val, type = "response")
-    prob.list = lapply(1:len_lam, function(i) sapply(1:len_lam, function(j) (prob1[,i]+prob2[,j])/2))
-    pred.list = lapply(prob.list, function(prob.mtx) apply(prob.mtx, 2, prob2pred))
-    acc.list = lapply(pred.list, function(pred.mtx) apply(pred.mtx, 2, function(pred.vec) sum(pred.vec== label.val)/length(label.val)))
-    acc.mtx.list[[k]] = do.call(rbind, acc.list)
-  }
-  acc.array = array(unlist(acc.mtx.list), dim = c(len_lam, len_lam, nfolds))
-  acc.mtx = apply(acc.array, c(1,2), function(x) mean(x))
-  sd.mtx = apply(acc.array, c(1,2), function(x) sd(x))
-  TF.mtx = acc.mtx == max(acc.mtx)
-  sd.vec = sd.mtx[TF.mtx]
-  min.sd = min(sd.vec)
-  TF.mtx = TF.mtx*(sd.mtx==min.sd)
-  id.mtx.max = expand.grid(seq(1,len_lam), seq(1,len_lam))[as.logical(as.vector(TF.mtx)),]
-  max.id = id.mtx.max[which.max(apply(id.mtx.max, 1, sum)), ]
-  #max.id = which.max(acc.mtx)
-  #max.id1 = (max.id - 1)%%len_lam + 1
-  #max.id2 = ceiling(max.id/len_lam)
-  return(list(max.id[[1]], max.id[[2]], sd.vec, id.mtx.max, acc.mtx, acc.mtx.list))
-}
+
 
 cv.svm = function(X, label, nfolds, cost.vec){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
@@ -361,4 +370,207 @@ getGraph.parallel = function(data.concat, col_ix, lambda_ix = 10, library = 'grp
   }
   return(beta.list[[lambda_ix]])
 }
+
+getGraph2.parallel = function(data_array, col_ix, ix = 6, lambda_ix = 10){
+  n = dim(data_array)[1]
+  Sigma_list = list()
+  for (sub_ix in 1:n){
+    Y = data_array[sub_ix,,col_ix]
+    X = data_array[sub_ix,,-col_ix]
+    fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, alpha = 0, intercept = F)
+    Yhat = predict(fit, newx = X)
+    E = Yhat - Y
+    Sigma = E[,ix]%*%t(E[,ix])
+    Sigma_list[[sub_ix]] = Sigma
+  }
+  
+  # compute C
+  Sigma_array = sapply(Sigma_list, function(X) X, simplify = "array")
+  Sigma = apply(Sigma_array, c(1,2), mean)
+  glassofit = glassopath(Sigma)
+  S = glassofit$w[,,1]
+  C = glassofit$wi[,,1]
+  C_half = expm::sqrtm(C)
+  
+  X.group = matrix(0, nrow = n*137, ncol = 115*n)
+  Y.group = rep(0, n*137)
+  for (sub_ix in 1:n){
+    Y = C_half%*%data_array[sub_ix,,col_ix]
+    X = C_half%*%data_array[sub_ix,,-col_ix]
+    Y.group[(137*(sub_ix-1)+1):(137*sub_ix)] = Y
+    X.group[(137*(sub_ix-1)+1):(137*sub_ix), (115*(sub_ix-1)+1):(115*sub_ix)] = X
+  }
+  group.ix = rep(seq(1,115), n)
+  SGLdata = list(x = X.group, y = Y.group)
+  SGL.list = SGL(data = SGLdata, index = group.ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
+  beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = n), col_ix))
+  return(beta.list[[lambda_ix]])
+}
+
+# get group coef from training data
+getX.group = function(data.concat.train.list, col_ix, library = "SGL", alpha = 0.8){
+  L = length(data.concat.train.list)
+  Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
+  X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
+  X.train.group = matrix(0, nrow = length(Y.train), ncol = 115*L)
+  vec = c(0, cumsum(sapply(X.list, nrow)))
+  for (l in 1:L){
+    X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
+  }
+  group_ix = rep(seq(1,115), L)
+  
+  if (library == "SGL"){
+    # use SGL
+    SGLdata = list(x = X.train.group, y = Y.train)
+    SGL.list = SGL(data = SGLdata, index = group_ix, min.frac = 0.25, nlam = 10, alpha = alpha, standardize = F)
+    #beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = L), col_ix))
+    group_coef = array(SGL.list$beta, dim = c(115, L, 10))
+  }else if (library == "grplasso"){
+    # use grplasso
+    lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
+    lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
+    group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
+    group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
+  }
+  return(group_coef)
+}
+
+# get res coef given group coef X.group.list
+getX.res.parallel = function(data.concat.train.list, data.concat.test.list, X.group.list, lambda_ix, col_ix, library = "SGL", alpha = 0.8){
+  L = length(data.concat.train.list)
+  group_coef = X.group.list[[col_ix]] # group_coef to be 116 by 115 by L
+  X.list = list()
+  for (l_test in 1:L){
+    res.list = lapply(1:L, function(l) data.concat.train.list[[l]][,col_ix] - data.concat.train.list[[l]][,-col_ix]%*%group_coef[,l_test])
+    # given residuals refit every subject
+    coef.mtx.list = list()
+    for (l in 1:L){
+      coef.list = list()
+      for (subject_ix in 1:n.train.vec[l]){
+        res_fit = glmnet(x = data.concat.train.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])[-1]
+      }
+      coef.mtx = do.call(cbind, coef.list)
+      coef.mtx.list[[l]] = coef.mtx
+    }
+    X.train = as.matrix(t(do.call(cbind, coef.mtx.list)))
+    
+    res.test.list = lapply(1:L, function(l) data.concat.test.list[[l]][,col_ix] - data.concat.test.list[[l]][,-col_ix]%*%group_coef[,l_test])
+    # given residuals refit every subject
+    coef.mtx.test.list = list()
+    for (l in 1:L){
+      coef.list = list()
+      for (subject_ix in 1:n.test.vec[l]){
+        res_fit = glmnet(x = data.concat.test.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.test.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])[-1]
+      }
+      coef.mtx = do.call(cbind, coef.list)
+      coef.mtx.test.list[[l]] = coef.mtx
+    }
+    X.test = as.matrix(t(do.call(cbind, coef.mtx.test.list)))
+    X.list[[l_test]] = list(X.train = X.train, X.test = X.test)
+  }
+  names(X.list) = c('res1coef', 'res2coef')
+  return(X.list) 
+}
+
+getX.group.parallel = function(data.concat.train.list, data.concat.test.list, lambda_group_ix, lambda_ix, col_ix, library = "SGL", alpha = 0.8){
+  L = length(data.concat.train.list)
+  Y.train = do.call(c, lapply(data.concat.train.list, function(x) x[,col_ix]))
+  X.list = lapply(data.concat.train.list, function(x) x[,-col_ix])
+  X.train.group = matrix(0, nrow = length(Y.train), ncol = 115*L)
+  vec = c(0, cumsum(sapply(X.list, nrow)))
+  for (l in 1:L){
+    X.train.group[(vec[l]+1):vec[l+1], 115*(l-1)+1:115] = X.list[[l]]
+  }
+  group_ix = rep(seq(1,115), L)
+  
+  if (library == "SGL"){
+    # use SGL
+    SGLdata = list(x = X.train.group, y = Y.train)
+    SGL.list = SGL(data = SGLdata, index = group_ix, min.frac = 0.25, nlam = 10, alpha = alpha, standardize = F)
+    #beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = L), col_ix))
+    group_coef = array(SGL.list$beta, dim = c(115, L, 10))
+  }else if (library == "grplasso"){
+    # use grplasso
+    lambda_max = lambdamax(x = X.train.group, y = Y.train, index = group_ix, model = LinReg(), center = F, standardize = F)
+    lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
+    group_fit = grplasso(x = X.train.group, y = Y.train, lambda = lambdas, index = group_ix, model = LinReg(), center = F, standardize = F)
+    group_coef = array_reshape(group_fit$coefficients, c(115, L, 10), order = "F")
+  }
+  
+  X.list = list()
+  for (l_test in 1:L){
+    res.list = lapply(1:L, function(l) data.concat.train.list[[l]][,col_ix] - data.concat.train.list[[l]][,-col_ix]%*%group_coef[,,lambda_group_ix][,l_test])
+    # given residuals refit every subject
+    coef.mtx.list = list()
+    for (l in 1:L){
+      coef.list = list()
+      for (subject_ix in 1:n.train.vec[l]){
+        res_fit = glmnet(x = data.concat.train.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])[-1]
+      }
+      coef.mtx = do.call(cbind, coef.list)
+      coef.mtx.list[[l]] = coef.mtx
+    }
+    X.train = as.matrix(t(do.call(cbind, coef.mtx.list)))
+    
+    res.test.list = lapply(1:L, function(l) data.concat.test.list[[l]][,col_ix] - data.concat.test.list[[l]][,-col_ix]%*%group_coef[,,lambda_group_ix][,l_test])
+    # given residuals refit every subject
+    coef.mtx.test.list = list()
+    for (l in 1:L){
+      coef.list = list()
+      for (subject_ix in 1:n.test.vec[l]){
+        res_fit = glmnet(x = data.concat.test.list[[l]][137*(subject_ix-1)+1:137, -col_ix], y = res.test.list[[l]][137*(subject_ix-1)+1:137], standardize = F, nlambda = 10, lambda.min.ratio = 0.25, intercept = F)
+        coef.list[[subject_ix]] = coef(res_fit, s=res_fit$lambda[lambda_ix])[-1]
+      }
+      coef.mtx = do.call(cbind, coef.list)
+      coef.mtx.test.list[[l]] = coef.mtx
+    }
+    X.test = as.matrix(t(do.call(cbind, coef.mtx.test.list)))
+    X.list[[l_test]] = list(X.train = X.train, X.test = X.test)
+  }
+  names(X.list) = c('res1coef', 'res2coef')
+  return(X.list) 
+}
+
+myT.test = function(mean1, sd1, mean2, sd2, n.train.vec){
+  n1 = n.train.vec[1]
+  n2 = n.train.vec[2]
+  Tstat = (mean1 - mean2)/sqrt(sd1^2/n1 +sd2^2/n2)
+  df = (sd1^2/n1 + sd2^2/n2)^2/((sd1^2/n1)^2/(n1-1) + (sd2^2/n2)^2/(n2-1))
+  if (is.na(Tstat) || is.na(df)){
+    return(NaN)
+  }else{
+    return(((pt(Tstat, df)<0.5)*pt(Tstat, df) + (pt(Tstat, df) >=0.5)*(1-pt(Tstat, df)))*2)
+  }
+}
+
+mtx.feature.ix = function(G1.train, label.train){
+  mtx1.mean = apply(G1.train[,,label.train==1], c(1,2), mean)
+  mtx2.mean = apply(G1.train[,,label.train==2], c(1,2), mean)
+  
+  mtx1.sd = apply(G1.train[,,label.train==1], c(1,2), sd)
+  mtx2.sd = apply(G1.train[,,label.train==2], c(1,2), sd)
+  
+  p.vec = c()
+  for (c in 1:116){
+    for (r in 1:116){
+      p.vec = c(p.vec, myT.test(mtx1.mean[r,c], mtx1.sd[r,c], mtx2.mean[r,c], mtx2.sd[r,c], n.train.vec))
+    }
+  }
+  p.mtx = matrix(p.vec, ncol = 116)
+  TF.mtx = p.mtx < 0.05
+  TF.mtx[is.na(TF.mtx)] = F
+  return(list(TF.mtx = TF.mtx, p.mtx = p.mtx))
+}
+
+
+
+
+
+
+
+
+
 

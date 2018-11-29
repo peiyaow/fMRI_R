@@ -39,20 +39,24 @@ data.train.list = lapply(1:L, function(l) data.list[[l]][ix.train.list[[l]],,])
 data.test.list = lapply(1:L, function(l) data.list[[l]][-ix.train.list[[l]],,])
 n.train.vec = sapply(ix.train.list, function(x) length(x))
 n.test.vec = n.vec[1:L] - n.train.vec
+n.train = sum(n.train.vec)
+n.test = sum(n.test.vec)
 data.concat.train.list = scale_data(data.train.list)
 data.concat.test.list = scale_data(data.test.list)
 label.train = as.factor(unlist(sapply(1:L, function(l) rep(l, n.train.vec[l]))))
 label.test = as.factor(unlist(sapply(1:L, function(l) rep(l, n.test.vec[l]))))
 
+lambda_group_ix = 10
 lambda_ix = 10
 cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
 X.train.test.group.list = foreach(col_ix = 1:116, .packages = c("grplasso", "reticulate", "glmnet", "SGL")) %dopar% {
-  getX.group.parallel(data.concat.train.list, data.concat.test.list, lambda_ix, col_ix)
-}
+  getX.group.parallel(data.concat.train.list, data.concat.test.list, lambda_group_ix, lambda_ix, col_ix)
+} # col_num by group by train and test
 stopCluster(cl)
-X.train.test.group.list0 = X.train.test.group.list
-X.train.test.group.list = X.train.test.group.list0
+
+#X.train.test.group.list0 = X.train.test.group.list
+#X.train.test.group.list = X.train.test.group.list0
 X1.train.test.group.list = lapply(1:116, function(col_ix) X.train.test.group.list[[col_ix]][[1]])
 X1.train.test.group.list = sapply(X1.train.test.group.list, function(list) as.array(list))
 X1.train = do.call(cbind, X1.train.test.group.list[1,])
