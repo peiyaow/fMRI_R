@@ -58,6 +58,8 @@ graphs = array_reshape(apply(graphs, 3, function(x) {
 
 X.feature = t(apply(graphs, 3, graph.features))
 Y.label = as.factor(c(rep(1, n.vec[1]), rep(2, n.vec[2])))
+
+
 feature.ix = seq(1,116)[apply(X.feature, 2, sd) != 0]
 X.feature = X.feature[, feature.ix]
 

@@ -371,13 +371,14 @@ getGraph.parallel = function(data.concat, col_ix, lambda_ix = 10, library = 'grp
   return(beta.list[[lambda_ix]])
 }
 
-getGraph2.parallel = function(data_array, col_ix, ix = 6, lambda_ix = 10){
+getGraph2.parallel = function(data_array, col_ix, ix = 10, lambda_ix = 10, library = 'SGL'){
   n = dim(data_array)[1]
   Sigma_list = list()
   for (sub_ix in 1:n){
     Y = data_array[sub_ix,,col_ix]
     X = data_array[sub_ix,,-col_ix]
-    fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, alpha = 0, intercept = F)
+#    fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, alpha = 0, intercept = F)
+    fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, lambda.min.ratio = 0.25, alpha = 1, intercept = F)
     Yhat = predict(fit, newx = X)
     E = Yhat - Y
     Sigma = E[,ix]%*%t(E[,ix])
@@ -401,11 +402,20 @@ getGraph2.parallel = function(data_array, col_ix, ix = 6, lambda_ix = 10){
     X.group[(137*(sub_ix-1)+1):(137*sub_ix), (115*(sub_ix-1)+1):(115*sub_ix)] = X
   }
   group.ix = rep(seq(1,115), n)
-  SGLdata = list(x = X.group, y = Y.group)
-  SGL.list = SGL(data = SGLdata, index = group.ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
-  beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = n), col_ix))
+  if (library == "SGL"){
+    SGLdata = list(x = X.group, y = Y.group)
+    SGL.list = SGL(data = SGLdata, index = group.ix, min.frac = 0.25, nlam = 10, alpha = 0.8, standardize = F)
+    beta.list = lapply(1:10, function(lam_ix) add.diagonal(matrix(SGL.list$beta[,lam_ix], ncol = n), col_ix))
+  }else if (library == "grplasso"){
+    lambda_max = lambdamax(x = X.group, y = Y.group, index = group.ix, model = LinReg(), center = F, standardize = F)
+    lambdas = exp(seq(log(lambda_max), log(lambda_max*0.25), length.out = 10))
+    group_fit = grplasso(x = X.group, y = Y.group, lambda = lambdas, index = group.ix, model = LinReg(), center = F, standardize = F)
+    group_coef = array_reshape(group_fit$coefficients, c(115, n, 10), order = "F")
+    beta.list = lapply(1:10, function(lam_ix) add.diagonal(group_coef[,,lam_ix], col_ix))
+  }
   return(beta.list[[lambda_ix]])
 }
+
 
 # get group coef from training data
 getX.group = function(data.concat.train.list, col_ix, library = "SGL", alpha = 0.8){

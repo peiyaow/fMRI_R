@@ -19,7 +19,7 @@ library(e1071)
 set.seed(myseed)
 
 # mac
-# source('~/Documents/Research/coding/R/fMRI_R/myfunctions.R')
+# source('~/Documents/Github/fMRI_R/myfunctions.R')
 # data = readMat("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/AD_array.mat")$timeseries.AD
 # ix = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/ix.txt")$V1
 # label = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/label.txt")$V1
@@ -48,11 +48,10 @@ data_array = abind(data.list[[1]], data.list[[2]], along = 1)
 
 cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
-G.mtx.list = foreach(col_ix = 1:116, .packages = c("SGL", "reticulate", "glasso", "glmnet")) %dopar% {
-  getGraph2.parallel(data_array, col_ix)
+G.mtx.list = foreach(col_ix = 1:116, .packages = c("SGL", "reticulate", "glasso", "glmnet", "grplasso")) %dopar% {
+  getGraph2.parallel(data_array, col_ix, library = 'grplasso')
 }
 stopCluster(cl)
-
 
 G.mtx.array = sapply(G.mtx.list, function(x) x, simplify = "array")
 graphs = aperm(G.mtx.array, c(1,3,2))
@@ -79,7 +78,7 @@ Y.label.test = Y.label[-ix.train]
 n.train = length(Y.label.train)
 n.test = length(Y.label.test)
 
-cost.vec = exp(seq(log(.1), log(.01), length.out = 100))
+cost.vec = exp(seq(log(100), log(.01), length.out = 100))
 #cost.vec = seq(.1,.01, length.out = 10)
 svm.list = lapply(cost.vec, function(cost) svm(x = X.feature.train, y = Y.label.train, scale = T, kernel = "linear", cost = cost))
 p.table = sapply(1:100, function(ix) sum(predict(svm.list[[ix]], X.feature.test) == Y.label.test)/n.test)
