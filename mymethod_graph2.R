@@ -49,7 +49,7 @@ data_array = abind(data.list[[1]], data.list[[2]], along = 1)
 cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
 G.mtx.list = foreach(col_ix = 1:116, .packages = c("SGL", "reticulate", "glasso", "glmnet", "grplasso")) %dopar% {
-  getGraph2.parallel(data_array, col_ix, glasso_ix, library = 'grplasso')
+  getGraph2.parallel(data_array, col_ix, glasso_ix, library = 'SGL')
 }
 stopCluster(cl)
 
