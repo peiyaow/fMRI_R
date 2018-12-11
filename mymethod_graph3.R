@@ -15,14 +15,15 @@ library(doParallel)
 library(glasso)
 library(SGL)
 library(e1071)
+library(QUIC)
 
 set.seed(myseed)
 
 # mac
-# source('~/Documents/Github/fMRI_R/myfunctions.R')
-# data = readMat("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/AD_array.mat")$timeseries.AD
-# ix = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/ix.txt")$V1
-# label = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/label.txt")$V1
+source('~/Documents/Github/fMRI_R/myfunctions.R')
+data = readMat("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/AD_array.mat")$timeseries.AD
+ix = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/ix.txt")$V1
+label = read.table("/Users/MonicaW/Documents/Research/graph_matlab/ADNI/label.txt")$V1
 
 # longleaf
 source('~/fMRI_R/myfunctions.R')
@@ -46,10 +47,15 @@ data.list = lapply(data.list, function(x) aperm(array_reshape(x, dim = c(116,137
 
 data_array = abind(data.list[[1]], data.list[[2]], along = 1)
 
-cl = makeCluster(8) # number of cores you can use
+cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
-G.mtx.list = foreach(col_ix = 1:116, .packages = c("SGL", "reticulate", "QUIC", "glmnet", "grplasso")) %dopar% {
-  getGraph2.parallel(data_array, col_ix, glasso_ix, library = 'SGL')
+G.mtx.list = foreach(col_ix = 1:116, .packages = c("QUIC", "reticulate", "glmnet")) %dopar% {
+  beta.list = list()
+  for (sub_ix in 1:dim(data_array)[1]){
+    beta.list[[sub_ix]] = getGraph3.parallel(data_array[sub_ix,,], col_ix, glasso_ix)
+  }
+  beta = add.diagonal(as.matrix(do.call(cbind, beta.list))[-1,], col_ix)
+  beta
 }
 stopCluster(cl)
 

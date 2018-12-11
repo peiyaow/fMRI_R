@@ -2,6 +2,7 @@ library(reticulate)
 library(SGL)
 library(grplasso)
 library(glasso)
+library(QUIC)
 
 scale_data = function(data.list){
   data.list = lapply(data.list, function(x) sapply(1:dim(x)[1], function(i) scale(x[i,,])))
@@ -326,8 +327,6 @@ cv.logistic2 = function(X1, X2, label, nfolds, lambda.vec, alpha, standardize = 
 }
 
 
-
-
 cv.svm = function(X, label, nfolds, cost.vec){
   flds = createFolds(label, k = nfolds, list = TRUE, returnTrain = FALSE)
   len_cost = length(cost.vec)
@@ -388,10 +387,19 @@ getGraph2.parallel = function(data_array, col_ix, glasso_ix, ix = 10, lambda_ix 
   # compute C
   Sigma_array = sapply(Sigma_list, function(X) X, simplify = "array")
   Sigma = apply(Sigma_array, c(1,2), mean)
-  glassofit = glassopath(Sigma)
-  S = glassofit$w[,,glasso_ix]
-  C = glassofit$wi[,,glasso_ix]
+  A = Sigma
+  diag(A) = 0
+  rho_max = max(abs(A))
+  
+  QUIC_fit = QUIC(Sigma, rho_max, path = exp(seq(log(1), log(0.25), length.out = 10)), msg = 0)
+  #glassofit = glassopath(Sigma)
+  C = QUIC_fit$X[,,glasso_ix]
   C_half = expm::sqrtm(C)
+  
+  # glassofit = glassopath(Sigma)
+  # S = glassofit$w[,,glasso_ix]
+  # C = glassofit$wi[,,glasso_ix]
+  # C_half = expm::sqrtm(C)
   
   X.group = matrix(0, nrow = n*137, ncol = 115*n)
   Y.group = rep(0, n*137)
@@ -415,6 +423,33 @@ getGraph2.parallel = function(data_array, col_ix, glasso_ix, ix = 10, lambda_ix 
   }
   return(beta.list[[lambda_ix]])
 }
+
+getGraph3.parallel = function(mydata, col_ix, glasso_ix, ix = 10, lambda_ix = 10){
+  Y = mydata[, col_ix]
+  X = mydata[, -col_ix]
+  fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, lambda.min.ratio = 0.25, alpha = 1, intercept = F)
+  fit1 = lm(Y~X)
+  Yhat = predict(fit, newx = X)
+  Yhat1 = predict(fit1, newx = X)
+  E = Yhat - Y
+  Sigma = E[,ix]%*%t(E[,ix])
+  A = Sigma
+  diag(A) = 0
+  rho_max = max(abs(A))
+  
+  # compute C
+  QUIC_fit = QUIC(Sigma, rho_max, path = exp(seq(log(1), log(0.25), length.out = 10)), msg = 0)
+  #glassofit = glassopath(Sigma)
+  C = QUIC_fit$X[,,glasso_ix]
+  C_half = expm::sqrtm(C)
+  
+  Y = C_half%*%Y
+  X = C_half%*%X
+  
+  fit = glmnet(x = X, y = Y, standardize = F, nlambda = 10, lambda.min.ratio = 0.25, alpha = 1, intercept = F)
+  return(coef(fit, s=fit$lambda[lambda_ix]))
+}
+
 
 
 # get group coef from training data
