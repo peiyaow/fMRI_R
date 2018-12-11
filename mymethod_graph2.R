@@ -46,10 +46,10 @@ data.list = lapply(data.list, function(x) aperm(array_reshape(x, dim = c(116,137
 
 data_array = abind(data.list[[1]], data.list[[2]], along = 1)
 
-cl = makeCluster(8) # number of cores you can use
+cl = makeCluster(4) # number of cores you can use
 registerDoParallel(cl)
 G.mtx.list = foreach(col_ix = 1:116, .packages = c("SGL", "reticulate", "QUIC", "glmnet", "grplasso")) %dopar% {
-  getGraph2.parallel(data_array, col_ix, glasso_ix, library = 'SGL')
+  getGraph2.parallel(data_array, col_ix, glasso_ix, library = 'grplasso')
 }
 stopCluster(cl)
 
