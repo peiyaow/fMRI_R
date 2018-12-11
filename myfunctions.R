@@ -371,7 +371,7 @@ getGraph.parallel = function(data.concat, col_ix, lambda_ix = 10, library = 'grp
   return(beta.list[[lambda_ix]])
 }
 
-getGraph2.parallel = function(data_array, col_ix, ix = 10, lambda_ix = 10, library = 'SGL'){
+getGraph2.parallel = function(data_array, col_ix, glasso_ix, ix = 10, lambda_ix = 10, library = 'SGL'){
   n = dim(data_array)[1]
   Sigma_list = list()
   for (sub_ix in 1:n){
@@ -389,8 +389,8 @@ getGraph2.parallel = function(data_array, col_ix, ix = 10, lambda_ix = 10, libra
   Sigma_array = sapply(Sigma_list, function(X) X, simplify = "array")
   Sigma = apply(Sigma_array, c(1,2), mean)
   glassofit = glassopath(Sigma)
-  S = glassofit$w[,,1]
-  C = glassofit$wi[,,1]
+  S = glassofit$w[,,glasso_ix]
+  C = glassofit$wi[,,glasso_ix]
   C_half = expm::sqrtm(C)
   
   X.group = matrix(0, nrow = n*137, ncol = 115*n)
